@@ -70,8 +70,6 @@ env_checkup()
 {
   echo "Checking for privileges"
   [[ `whoami` == root ]] || print_error "root permissions are required"
-
-  [[ $OS == FreeBSD ]]
 }
 
 bin_checkup()
