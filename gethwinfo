@@ -6,33 +6,92 @@ PATH="/sbin:/bin:/usr/sbin:/usr/bin:/sbin"
 
 print_error()
 {
-  echo "  * ERROR: $@"
+  echo "ERROR: $@"
   exit 1
 }
 
+detect_os()
+{
+  echo "Checking for OS"
+
+  OS=$(uname -s)
+  KERNEL=$(uname -r)
+  ARCH=$(uname -m)
+
+  # verify OS
+  [[ $OS == FreeBSD || $OS == Linux ]] || print_error "OS $OS not recognized"
+
+  if [[ $OS == FreeBSD ]]; then
+    DISTRO=$OS
+    DISTRO_VERSION=`echo $KERNEL | awk -F\- '{print $1}'`
+  fi
+
+  # Linux processing
+  if [[ $OS == Linux ]]; then
+    # lsb check
+    [[ -f `which lsb_release` ]] && LSB=1 || LSB=0
+
+    if [[ $LSB -eq 1 ]]; then
+      DISTRO=`lsb_release -si`
+      DISTRO_VERSION=`lsb_release -sr`
+    fi
+
+    if [[ $LSB -eq 0 ]]; then
+      distro()
+      {
+        release_file=$1
+        distro=$2
+
+        [[ -f $release_file ]] && DISTRO=$distro || return
+
+        DISTRO_VERSION=`grep -o -E '[0-9]+\.[0-9]+.*' $release_file | awk '{print $1}'`
+        [[ `echo $DISTRO_VERSION | wc -l` -eq 0 ]] && DISTRO_VERSION=unknown
+      }
+
+      # detect known distros
+      distro /etc/debian_version Debian
+      distro /etc/redhat-release RHEL
+      distro /etc/centos-release CentOS
+      distro /etc/gentoo-release Gentoo
+      distro /etc/system-release AMI
+      distro /etc/SuSe-release SUSE
+    fi
+  fi
+
+  DISTRO_MAJOR_VERSION=`echo $DISTRO_VERSION | awk -F\. {'print $1'}`
+  DISTRO_MINOR_VERSION=`echo $DISTRO_VERSION | awk -F\. {'print $1'}`
+
+  echo $DISTRO
+  echo $DISTRO_VERSION
+}
+
+
 env_checkup()
 {
-  echo "Checking root privileges"
-  [[ `whoami` == root ]] || print_error "Root permissions are required" 
+  echo "Checking for privileges"
+  [[ `whoami` == root ]] || print_error "root permissions are required"
+}
 
-	echo  "Checking dmodecode binary"
-  [[ -f `which dmidecode 2>/dev/null` ]] || print_error "dmidecode didn't install" 
+bin_checkup()
+{
+	echo "Checking for dmidecode"
+  [[ -f `which dmidecode 2>/dev/null` ]] || echo "dmidecode is not installed"
 }
 
 ip_lists()
 {
   echo "Checking server ip addr:"
 	IP_LIST=$(ifconfig | grep -B1 "inet addr" | awk '{ if ( $1 == "inet" ) { print $2 } else if ( $2 == "Link" ) { printf "%s:" ,$1 } }' | awk -F: '{ print $1 ": " $3 }')
-  echo  "${IP_LIST}"
+  echo "${IP_LIST}"
 }
 
 detect_distro()
 {
-
-ARCH=$(uname -m)
-KERNEL=$(uname -r)
+  ARCH=$(uname -m)
+  KERNEL=$(uname -r)
  
   echo "Determininig OS distributive:"
+
   if [[ -f `which lsb_release` ]]; then
 	  OS=$(lsb_release -sri)
   elif [[ -f /etc/debian_version ]]; then
@@ -61,7 +120,11 @@ dmidecode_parser()
 	MEMORY_COUTN=$(dmidecode  --type 17| grep  'Size:' | wc -l)
   echo "Server has following memory: $MEMORY_INFO Count of memory modules ${MEMORY_COUTN}x${MEMORY_CAPASITY}Mb"
 }
+
+detect_os
 env_checkup
-ip_lists
-detect_distro
-dmidecode_parser
+bin_checkup
+
+#ip_lists
+#detect_distro
+#dmidecode_parser
